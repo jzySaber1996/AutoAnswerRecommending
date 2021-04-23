@@ -1,21 +1,18 @@
+
 # coding: utf-8
-from __future__ import print_function
+
 # In[1]:
-
-
-# difference from cnn_context:
-# in this code, context info are represented by conv net before concat with the current utterance representation
-
-
-# In[2]:
-
+from __future__ import print_function
 
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
-# In[3]:
+# In[2]:
+
+
+
 
 import os
 import sys
@@ -23,58 +20,59 @@ import numpy as np
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
-from keras.layers import Dense, Input, GlobalMaxPooling1D, Dropout, concatenate, Concatenate
-from keras.layers import Conv1D, MaxPooling1D, Embedding, Bidirectional, LSTM, Lambda
+from keras.layers import Dense, Input, GlobalMaxPooling1D, Dropout, concatenate, Concatenate, GlobalAveragePooling1D
+from keras.layers import Conv1D, MaxPooling1D, Embedding, Bidirectional, LSTM
 from keras.models import Model
 from models.custom_metrics import hamming_score, f1
 from keras import optimizers, regularizers
 from keras.callbacks import EarlyStopping
+# import matplotlib.pyplot as plt
 import logging, pickle
-from models.train_test_valid_selection import *
+from models.attention import *
+# from keras_bert import Tokenizer
 
-# logging.basicConfig(filename='cnn_context_rep.log', level=logging.INFO)
+
+# In[3]:
+# conv_units = int(sys.argv[1])
+# filter_size = 3
+# pooling_size = 3
+# dropout_rate = float(sys.argv[2])
+# dense_units = int(sys.argv[3])
+# max_len = int(sys.argv[4])
 
 conv_units = 1024 #int(sys.argv[1])
 filter_size = 3
 pooling_size = 3
 dropout_rate = 0.6 #float(sys.argv[2])
 dense_units = 256 #int(sys.argv[3])
-max_len = 800 #int(sys.argv[4])
+max_len = 400 #int(sys.argv[4])
 
-context_conv_units = 128 #int(sys.argv[5])
-context_filter_size = filter_size
-context_pooling_size = pooling_size
-context_dropout_rate = dropout_rate
-context_dense_units = 128 #int(sys.argv[6])
-# In[4]:
-logging.basicConfig(filename='../res/cnn_context_rep_gitter/{}_{}_{}_{}_{}_{}.log'.format(conv_units, dropout_rate, dense_units, max_len, context_conv_units, context_dense_units), level=logging.INFO)
+logging.basicConfig(filename='../res/cnn_feature/{}_{}_{}_{}.log'.format(conv_units, dropout_rate, dense_units, max_len), level=logging.INFO)
 
 BASE_DIR = ''
-GLOVE_DIR = ''
-#EMBEDDING_FILE = ''
-EMBEDDING_FILE = '../data/glove.6B.100d.txt'
-MAX_SEQUENCE_LENGTH = 800#max_len
+GLOVE_DIR = '../data/'
+# EMBEDDING_FILE = 'glove.6B.100d.txt'
+EMBEDDING_FILE = 'glove.6B.100d.txt'
+MAX_SEQUENCE_LENGTH = max_len
 MAX_NUM_WORDS = 20000
 EMBEDDING_DIM = 100
 EMBED_INIT_GLOVE = True
-FEAT_NUM = 1
+FEAT_NUM = 24
+ATTR_NUM = 128
+
+# In[4]:
+
+
+train_file = '../data/issuedialog/train.tsv'
+valid_file = '../data/issuedialog/valid.tsv'
+test_file = '../data/issuedialog/test.tsv'
+
+train_feat_file = '../data/issuedialog/train_features.tsv'
+valid_feat_file = '../data/issuedialog/valid_features.tsv'
+test_feat_file = '../data/issuedialog/test_features.tsv'
 
 
 # In[5]:
-# projects = ['Angular', 'Appium', 'Deeplearning4j', 'Docker', 'Ethereum', 'Nodejs', 'Gitter', 'Typescript']
-# train_projects, test_projects, valid_projects = projects[0:6], [projects[7]], [projects[6]]
-# cross_project_selection(train_projects, valid_projects, test_projects)
-
-train_file = '../data/gitterdialog/train.tsv'
-valid_file = '../data/gitterdialog/valid.tsv'
-test_file = '../data/gitterdialog/test.tsv'
-
-train_feat_file = '../data/gitterdialog/train_features.tsv'
-valid_feat_file = '../data/gitterdialog/valid_features.tsv'
-test_feat_file = '../data/gitterdialog/test_features.tsv'
-
-
-# In[6]:
 
 
 # first, build index mapping words in the embeddings set to their embedding vector
@@ -82,7 +80,7 @@ test_feat_file = '../data/gitterdialog/test_features.tsv'
 print('Indexing word vectors.')
 
 embeddings_index = {}
-with open(os.path.join(GLOVE_DIR, EMBEDDING_FILE),'r',encoding='utf8') as f:
+with open(os.path.join(GLOVE_DIR, EMBEDDING_FILE), encoding='utf8') as f:
     for line in f:
         values = line.split(' ')
         word = values[0]
@@ -92,15 +90,16 @@ with open(os.path.join(GLOVE_DIR, EMBEDDING_FILE),'r',encoding='utf8') as f:
 print('Found %s word vectors.' % len(embeddings_index))
 
 
-# In[7]:
+# In[6]:
 
 
 # second, prepare text samples and their labels
 print('Processing text dataset')
 
 texts = []  # list of text samples
-labels_index = {'OQ': 0, 'OP': 1, 'OF': 2, 'FD': 3, 'FQ': 4, 'CQ': 5, 'AE': 6, 'AC': 7, 'IG': 8, 'CC': 9, 'UF': 10,
-                'PF': 11, 'NF': 12, 'GG': 13, 'JK': 14}
+# labels_index = {'OQ': 0, 'OP': 1, 'OF': 2, 'FD': 3, 'FQ': 4, 'CQ': 5, 'AE': 6, 'AC': 7, 'IG': 8, 'CC': 9, 'UF': 10,
+#                 'PF': 11, 'NF': 12, 'GG': 13, 'JK': 14}
+labels_index = {'0': 0, '1': 1}
 id2label = {v: k for k, v in labels_index.items()}
 classes_num = len(labels_index)
 
@@ -115,7 +114,7 @@ def load_data_and_labels(data_file):
             if line != '\n':
                 line = line.strip()
                 tokens = line.split('\t')
-                labels = tokens[0].split('_')
+                labels = tokens[3].split('_')
                 x.append(tokens[1])
                 each_y = [0] * classes_num
                 for label in labels:
@@ -127,6 +126,7 @@ x_train, y_train = load_data_and_labels(train_file)
 x_valid, y_valid = load_data_and_labels(valid_file)
 x_test, y_test = load_data_and_labels(test_file)
 
+
 # MAX_SEQUENCE_LENGTH = max(max(map(len, x_train)), max(map(len, x_valid)), max(map(len, x_test)))
 # print(MAX_SEQUENCE_LENGTH)
 
@@ -135,7 +135,7 @@ labels = np.array(y_train + y_valid + y_test)
 print('Found %s texts.' % len(x_train + x_valid + x_test))
 
 
-# In[8]:
+# In[7]:
 
 
 def load_features(data_file):
@@ -148,16 +148,18 @@ def load_features(data_file):
             if line != '\n':
                 line = line.strip()
                 tokens = line.split('\t')
-                features = tokens[1].split()
-                abs_pos = int(features[10])
-                x.append(abs_pos)
+                features = list(map(float, tokens[1].split()))
+                x.append(features)
     return np.array(x)
 
 x_train_feat = load_features(train_feat_file)
 x_val_feat = load_features(valid_feat_file)
 x_test_feat = load_features(test_feat_file)
 
-# In[9]:
+print('Found %s features.' % len(x_train_feat[0]))
+
+
+# In[8]:
 
 
 # finally, vectorize the text samples into a 2D integer tensor
@@ -168,15 +170,15 @@ sequences = tokenizer.texts_to_sequences(x_train + x_valid + x_test)
 word_index = tokenizer.word_index
 print('Found %s unique tokens.' % len(word_index))
 
-# data = pad_sequences(sequences, padding='post', truncating='post', maxlen=MAX_SEQUENCE_LENGTH)
 data = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
+
 # labels = to_categorical(np.asarray(y_train))
 print('Shape of data tensor:', data.shape)
 print('Shape of label tensor:', labels.shape)
 print('Shape of feature tensor:', x_train_feat.shape)
 
 
-# In[10]:
+# In[9]:
 
 
 print('Preparing embedding matrix.')
@@ -199,16 +201,16 @@ if EMBED_INIT_GLOVE:
     embedding_layer = Embedding(num_words,
                                 EMBEDDING_DIM,
                                 weights=[embedding_matrix],
-                                input_length=MAX_SEQUENCE_LENGTH*3,
+                                input_length=MAX_SEQUENCE_LENGTH,
                                 trainable=True)
 else:
     embedding_layer = Embedding(num_words, 
                                 EMBEDDING_DIM, 
                                 embeddings_initializer='uniform', 
-                                input_length=MAX_SEQUENCE_LENGTH*3)
+                                input_length=MAX_SEQUENCE_LENGTH)
 
 
-# In[11]:
+# In[ ]:
 
 
 num_validation_samples = len(y_valid)
@@ -222,125 +224,98 @@ x_val = data[num_train_samples: num_train_samples + num_validation_samples]
 y_val = labels[num_train_samples: num_train_samples + num_validation_samples]
 x_test = data[-num_test_samples:]
 y_test = labels[-num_test_samples:]
+
 assert len(x_train) + len(x_val) + len(x_test) == len(labels)
 assert len(y_train) + len(y_val) + len(y_test) == len(labels)
 
 
-# In[12]:
+# load sequence features
+def load_sequence_features(data_file):
+    x = []
+    i = 0
+    with open(data_file, encoding='utf8') as raw_data:
+        for line in raw_data:
+            i += 1
+#             print(i)
+            if line != '\n':
+                line = line.strip()
+                tokens = line.split('\t')
+                features = tokens[1].split()
+                abs_pos = int(features[10])
+                x.append(abs_pos)
+    return np.array(x)
+
+x_train_sequence_feat = load_sequence_features(train_feat_file)
+x_val_sequence_feat = load_sequence_features(valid_feat_file)
+x_test_sequence_feat = load_sequence_features(test_feat_file)
 
 
-# incorporate context
-# e.g. before: u1, u2, u3, u4, u5
-#      now: u1, u1+u2, u1+u2+u3, u2+u3+u4, u3+u4+u5
-# Optimization with attention
-def gen_data_with_context(x, x_feat): 
+# window_size=3 context information
+def gen_data_with_context(x, x_feat):
     # incorporate pervious one and future one utterances as context
     num_sample, size_sample = x.shape
     x_trans = np.zeros((num_sample, size_sample * 3),  dtype=int)
     for i, abs_pos in enumerate(x_feat):
         if abs_pos == 1:
-            x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i], x[i + 1]))
+            if i + 1 < len(x_feat):
+                if x_feat[i + 1] == 1:
+                    x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i], np.zeros(MAX_SEQUENCE_LENGTH)))
+                else:
+                    x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i], x[i + 1]))
+            else:
+                x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i], np.zeros(MAX_SEQUENCE_LENGTH)))
         elif i == num_sample - 1 or x_feat[i + 1] == 1:
             x_trans[i] = np.hstack((x[i - 1], x[i], np.zeros(MAX_SEQUENCE_LENGTH)))
         else:
             x_trans[i] = np.hstack((x[i - 1], x[i], x[i + 1]))
     return x_trans
+x_train_with_context = gen_data_with_context(x_train, x_train_sequence_feat).astype(np.float32)
+x_val_with_context = gen_data_with_context(x_val, x_val_sequence_feat).astype(np.float32)
+x_test_with_context = gen_data_with_context(x_test, x_test_sequence_feat).astype(np.float32)
 
-# def gen_data_with_context(x, x_feat): 
-#     # incorporate pervious two utterances as context
-#     num_sample, size_sample = x.shape
-#     x_trans = np.zeros((num_sample, size_sample * 3),  dtype=int)
-#     for i, abs_pos in enumerate(x_feat):
-#         if abs_pos == 1:
-#             x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), np.zeros(MAX_SEQUENCE_LENGTH), x[i]))
-#         elif abs_pos == 2:
-#             x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i - 1], x[i]))
-#         else:
-#             x_trans[i] = np.hstack((x[i - 2], x[i - 1], x[i]))
-#     return x_trans
-
-
-# In[13]:
-
-
-x_train_with_context = gen_data_with_context(x_train, x_train_feat)
-x_val_with_context = gen_data_with_context(x_val, x_val_feat)
-x_test_with_context = gen_data_with_context(x_test, x_test_feat)
-
-
-# In[14]:
-
-
-
-
-
-# In[16]:
+# In[ ]:
 
 
 print('Training model.')
 
 # train a 1D convnet with global maxpooling
-sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH * 3,), dtype='int32')
+sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
+feature_input = Input(shape=(FEAT_NUM,), dtype='float32')
+context_input = Input(shape=(MAX_SEQUENCE_LENGTH * 3,), dtype='float32')
 embedded_sequences = embedding_layer(sequence_input)
-
-x_pre = Lambda(lambda x: x[:, 0: MAX_SEQUENCE_LENGTH, :])(embedded_sequences)
-x = Lambda(lambda x: x[:, MAX_SEQUENCE_LENGTH : 2 * MAX_SEQUENCE_LENGTH, :])(embedded_sequences)
-x_post = Lambda(lambda x: x[:, 2 * MAX_SEQUENCE_LENGTH : -1, :])(embedded_sequences)
-
-# current utterance
+x = Conv1D(conv_units, filter_size, activation='relu')(embedded_sequences)
+x = MaxPooling1D(pooling_size)(x)
+x = Dropout(dropout_rate)(x)
 x = Conv1D(conv_units, filter_size, activation='relu')(x)
 x = MaxPooling1D(pooling_size)(x)
 x = Dropout(dropout_rate)(x)
-
-x = Conv1D(conv_units, filter_size, activation='relu')(x)
-x = MaxPooling1D(pooling_size)(x)
-x = Dropout(dropout_rate)(x)
-
 x = Conv1D(conv_units, filter_size, activation='relu')(x)
 x = GlobalMaxPooling1D()(x)
 x = Dropout(dropout_rate)(x)
-
+x = Dense(dense_units * 2, activation='relu')(x)
+x = Dropout(dropout_rate)(x)
 x = Dense(dense_units, activation='relu')(x)
 
-# previous utterance
-x_pre = Conv1D(context_conv_units, context_filter_size, activation='relu')(x_pre)
-x_pre = MaxPooling1D(context_pooling_size)(x_pre)
-x_pre = Dropout(context_dropout_rate)(x_pre)
+embeddings = Embedding(MAX_NUM_WORDS, 128)(context_input)
+# O_seq = Self_Attention(128)(embeddings)
+attr_result = Self_Attention(ATTR_NUM)(embeddings)
+attr_result = GlobalMaxPooling1D()(attr_result)
+attr_result = Dropout(0.5)(attr_result)
 
-x_pre = Conv1D(context_conv_units, context_filter_size, activation='relu')(x_pre)
-x_pre = MaxPooling1D(context_pooling_size)(x_pre)
-x_pre = Dropout(context_dropout_rate)(x_pre)
+print(attr_result.shape)
+print(x.shape)
+print(feature_input.shape)
 
-x_pre = Conv1D(context_conv_units, context_filter_size, activation='relu')(x_pre)
-x_pre = GlobalMaxPooling1D()(x_pre)
-x_pre = Dropout(context_dropout_rate)(x_pre)
+concat1 = Concatenate()([x, feature_input])
+concat2 = Concatenate()([x, attr_result])
 
-x_pre = Dense(context_dense_units, activation='relu')(x_pre)
 
-# future utterance
-x_post = Conv1D(context_conv_units, context_filter_size, activation='relu')(x_post)
-x_post = MaxPooling1D(context_pooling_size)(x_post)
-x_post = Dropout(context_dropout_rate)(x_post)
+concat = Concatenate()([x, feature_input, attr_result])
+preds = Dense(len(labels_index), activation='sigmoid')(concat)
 
-x_post = Conv1D(context_conv_units, context_filter_size, activation='relu')(x_post)
-x_post = MaxPooling1D(context_pooling_size)(x_post)
-x_post = Dropout(context_dropout_rate)(x_post)
+model = Model([sequence_input, feature_input, context_input], preds)
 
-x_post = Conv1D(context_conv_units, context_filter_size, activation='relu')(x_post)
-x_post = GlobalMaxPooling1D()(x_post)
-x_post = Dropout(context_dropout_rate)(x_post)
-
-x_post = Dense(context_dense_units, activation='relu')(x_post)
-
-# concat three outputs
-
-x = Concatenate()([x_pre, x, x_post])
-
-preds = Dense(len(labels_index), activation='sigmoid')(x)
-
-model = Model(sequence_input, preds)
-
-# sgd = optimizers.SGD(lr=0.05, decay=1e-6, momentum=0.9, nesterov=True)
+# adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
 
 model.compile(loss='binary_crossentropy',
               optimizer='adam',
@@ -351,19 +326,15 @@ es = EarlyStopping(monitor='val_loss',
                   patience=2,
                   verbose=0, mode='auto')
 
-# train model
-history = model.fit(x_train_with_context, y_train,
-          batch_size=128,
-          epochs=200,
+history = model.fit([x_train, x_train_feat, x_train_with_context], y_train,
+          batch_size=8,
+          epochs=100,
           callbacks=[es],
-          validation_data=(x_val_with_context, y_val))
+          validation_data=([x_val, x_val_feat, x_val_with_context], y_val))
 
+model.save_weights('weights_cnn_att_pa&-pa.h5',overwrite=True)
 
-model.save_weights('weights_cnn_sequence_pa&-pa.h5',overwrite=True)
-# model.save('res/cnn_context_rep/model.h5',overwrite=True,include_optimizer=True)
-
-
-# In[17]:
+# In[ ]:
 
 
 # plt.plot(history.history['loss'])
@@ -374,19 +345,15 @@ model.save_weights('weights_cnn_sequence_pa&-pa.h5',overwrite=True)
 # plt.legend(['train', 'val'], loc='upper left')
 # plt.show()
 
-
-# In[18]:
-
-
 from copy import deepcopy
-model.load_weights('weights_cnn_sequence_pa&-pa.h5')
-pred_val = model.predict(np.array(x_val_with_context))
-pred_test = model.predict(np.array(x_test_with_context))
+model.load_weights('weights_cnn_att_pa&-pa.h5')
+pred_val = model.predict([np.array(x_val), x_val_feat, x_val_with_context])
+pred_test = model.predict([np.array(x_test), x_test_feat, x_test_with_context])
+
+# In[ ]:
 
 for th in [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]:
     pred = deepcopy(pred_val)
-
-    
 
     # if predicted proba >= 0.5, this label is set to 1. if all probas < 0.5, the label with largest proba is set to 1
     for i in range(pred.shape[0]):
@@ -398,19 +365,16 @@ for th in [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]:
             pred[i] = 0
             pred[i][max_index] = 1
 
-
     # In[ ]:
-
 
     acc_val = hamming_score(y_val, pred)
     p_val, r_val, f1_val = f1(y_val, pred)
     print('Eval====>Th: {}, Acc: {}, P: {}, R: {}, F1: {}'.format(th, acc_val, p_val, r_val, f1_val))
 
-
     # In[ ]:
 
     pred = deepcopy(pred_test)
-    
+
     for i in range(pred.shape[0]):
         if len(np.where(pred[i] >= th)[0]) > 0:
             pred[i][pred[i] >= th] = 1
@@ -423,8 +387,7 @@ for th in [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]:
     p_test, r_test, f1_test = f1(y_test, pred)
     print('Test====>Th: {}, Acc: {}, P: {}, R: {}, F1: {}'.format(th, acc_test, p_test, r_test, f1_test))
 
-
-    #logging
+    # logging
     # pickle_name = '../res/cnn_context_rep_gitter/{}_{}_{}_{}_{}_{}_{}.res'.format(conv_units, dropout_rate, dense_units, max_len,  context_conv_units, context_dense_units, th)
     # pickle_file = open(pickle_name, 'wb')
     # pickle.dump(pred, pickle_file, pickle.HIGHEST_PROTOCOL)

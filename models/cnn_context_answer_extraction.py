@@ -65,13 +65,13 @@ FEAT_NUM = 1
 # train_projects, test_projects, valid_projects = projects[0:6], [projects[7]], [projects[6]]
 # cross_project_selection(train_projects, valid_projects, test_projects)
 
-train_file = '../data/gitterdialog/train.tsv'
-valid_file = '../data/gitterdialog/valid.tsv'
-test_file = '../data/gitterdialog/test.tsv'
+train_file = '../data/issuedialog/train.tsv'
+valid_file = '../data/issuedialog/valid.tsv'
+test_file = '../data/issuedialog/test.tsv'
 
-train_feat_file = '../data/gitterdialog/train_features.tsv'
-valid_feat_file = '../data/gitterdialog/valid_features.tsv'
-test_feat_file = '../data/gitterdialog/test_features.tsv'
+train_feat_file = '../data/issuedialog/train_features.tsv'
+valid_feat_file = '../data/issuedialog/valid_features.tsv'
+test_feat_file = '../data/issuedialog/test_features.tsv'
 
 
 # In[6]:
@@ -99,8 +99,9 @@ print('Found %s word vectors.' % len(embeddings_index))
 print('Processing text dataset')
 
 texts = []  # list of text samples
-labels_index = {'OQ': 0, 'OP': 1, 'OF': 2, 'FD': 3, 'FQ': 4, 'CQ': 5, 'AE': 6, 'AC': 7, 'IG': 8, 'CC': 9, 'UF': 10,
-                'PF': 11, 'NF': 12, 'GG': 13, 'JK': 14}
+# labels_index = {'OQ': 0, 'OP': 1, 'OF': 2, 'FD': 3, 'FQ': 4, 'CQ': 5, 'AE': 6, 'AC': 7, 'IG': 8, 'CC': 9, 'UF': 10,
+#                 'PF': 11, 'NF': 12, 'GG': 13, 'JK': 14}
+labels_index = {'0': 0, '1': 1}
 id2label = {v: k for k, v in labels_index.items()}
 classes_num = len(labels_index)
 
@@ -115,7 +116,8 @@ def load_data_and_labels(data_file):
             if line != '\n':
                 line = line.strip()
                 tokens = line.split('\t')
-                labels = tokens[0].split('_')
+                # labels = tokens[0].split('_')
+                labels = tokens[3].split('_')
                 x.append(tokens[1])
                 each_y = [0] * classes_num
                 for label in labels:
@@ -239,7 +241,13 @@ def gen_data_with_context(x, x_feat):
     x_trans = np.zeros((num_sample, size_sample * 3),  dtype=int)
     for i, abs_pos in enumerate(x_feat):
         if abs_pos == 1:
-            x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i], x[i + 1]))
+            if i + 1 < len(x_feat):
+                if x_feat[i + 1] == 1:
+                    x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i], np.zeros(MAX_SEQUENCE_LENGTH)))
+                else:
+                    x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i], x[i + 1]))
+            else:
+                x_trans[i] = np.hstack((np.zeros(MAX_SEQUENCE_LENGTH), x[i], np.zeros(MAX_SEQUENCE_LENGTH)))
         elif i == num_sample - 1 or x_feat[i + 1] == 1:
             x_trans[i] = np.hstack((x[i - 1], x[i], np.zeros(MAX_SEQUENCE_LENGTH)))
         else:
@@ -353,7 +361,7 @@ es = EarlyStopping(monitor='val_loss',
 
 # train model
 history = model.fit(x_train_with_context, y_train,
-          batch_size=128,
+          batch_size=16,
           epochs=200,
           callbacks=[es],
           validation_data=(x_val_with_context, y_val))

@@ -1,5 +1,5 @@
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from data_helper import tokenizer, load_sentiment_lexicon
+from features.data_helper import tokenizer, load_sentiment_lexicon
 
 
 def sentiment_scores(sentences):
@@ -57,7 +57,7 @@ def lexicon(utterances, pos_dict, neg_dict):
 
 if __name__ == '__main__':
     utterances = ['bad movie', 'thank you for your help, but the solution does not work']
-    pos_file = '../data/positive-words.txt'
-    neg_file = '../data/negative-words.txt'
+    pos_file = '../../data/positive-words.txt'
+    neg_file = '../../data/negative-words.txt'
     pos_dict, neg_dict = load_sentiment_lexicon(pos_file, neg_file)
     print(lexicon(utterances, pos_dict, neg_dict))

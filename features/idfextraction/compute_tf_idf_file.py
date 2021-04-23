@@ -1,5 +1,6 @@
 from features.data_helper import *
 from nltk.corpus import stopwords
+import xlrd
 import math
 
 def compute_idf(sents_ints, term_to_id_dict, id_to_term_dict):
@@ -41,29 +42,45 @@ def update_df_dict(q1, term_to_df_dict, id_to_term_dict, term_to_tf_dict):
 
 if __name__ == '__main__':
 
-    vocab_file = '../data/vocab.tsv'
-    idf_file = '../data/idf.tsv'
+    vocab_file = '../../data/vocab.tsv'
+    idf_file = '../../data/idf.tsv'
 
     term_to_id_dict = dict()
     id_to_term_dict = dict()
     init_term_to_id_dict(term_to_id_dict, vocab_file)
     id_to_term_dict = dict(zip(term_to_id_dict.values(), term_to_id_dict.keys()))
 
-    conn_title = connect_db()
-    conn_utter = connect_db()
+    # conn_title = connect_db()
+    # conn_utter = connect_db()
+    #
+    # sql_title = 'select title from titles_final'
+    # sql_utter = 'select utterance from contents_final'
+    #
+    # with conn_title.cursor() as cursor_title, conn_utter.cursor() as cursor_utter:
+    #     cursor_title.execute(sql_title)
+    #     titles = [row['title'] for row in cursor_title.fetchall()]
+    #
+    #     cursor_utter.execute(sql_utter)
+    #     utterances = [row['utterance'] for row in cursor_utter.fetchall()]
 
-    sql_title = 'select title from titles_final'
-    sql_utter = 'select utterance from contents_final'
-
-    with conn_title.cursor() as cursor_title, conn_utter.cursor() as cursor_utter:
-        cursor_title.execute(sql_title)
-        titles = [row['title'] for row in cursor_title.fetchall()]
-
-        cursor_utter.execute(sql_utter)
-        utterances = [row['utterance'] for row in cursor_utter.fetchall()]
+    projects = ['Angular', 'Appium', 'Deeplearning4j', 'Docker', 'Ethereum', 'Nodejs', 'Gitter', 'Typescript']
+    remark_pos = [6, 6, 7, 6, 6, 6, 6, 6]
+    utterances = []
+    for project, remark in zip(projects, remark_pos):
+        workbook = xlrd.open_workbook('../../data/data.xls')
+        sheet = workbook.sheet_by_name(project)
+        data_utterances = sheet.col_values(1, 1, sheet.nrows)
+        data_remarks = sheet.col_values(remark, 1, sheet.nrows)
+        for data_utterance, data_remark in zip(data_utterances, data_remarks):
+            if data_remark != '' or data_utterance == '':
+                continue
+            conversation = data_utterance.split('\n')
+            conversation = [each_utterance[each_utterance.index('>') + 1:] for each_utterance in conversation if
+                            '>' in each_utterance]
+            utterances += conversation
 
     sents_ints = []
-    sents = map(clean_str, titles + utterances)
+    sents = map(clean_str, utterances)#titles + utterances
     for sent in sents:
         sent_ints = [term_to_id_dict.get(term) for term in tokenizer(sent)]
         sent_ints = list(filter(lambda x: x is not None, sent_ints))
